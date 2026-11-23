@@ -5,6 +5,7 @@ permissions:
 jobs:
   restore:
     runs-on: ubuntu-latest
+    container: postgres:16
     services:
       postgres:
         image: postgres:16
@@ -12,20 +13,32 @@ jobs:
           POSTGRES_USER: drill
           POSTGRES_PASSWORD: local-demo-only
           POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U drill -d postgres"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
     env:
-      PGHOST: 127.0.0.1
+      PGHOST: postgres
       PGPORT: 5432
       PGUSER: drill
       PGPASSWORD: local-demo-only
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
       - run: bash -n scripts/backup.sh && bash -n scripts/restore.sh && bash -n scripts/drill.sh
-      - run: ./scripts/drill.sh
+      - name: Run backup and recovery drill
+        run: |
+          if ! command -v shasum >/dev/null; then
+            # The scripts use shasum -a 256 on macOS. Debian also ships sha256sum.
+            shasum() {
+              if [[ "$#" != 3 || "$1" != -a || "$2" != 256 ]]; then
+                return 2
+              fi
+              sha256sum -- "$3"
+            }
+            export -f shasum
+          fi
+          ./scripts/drill.sh
